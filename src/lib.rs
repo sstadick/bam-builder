@@ -1,18 +1,27 @@
 #[macro_use]
 extern crate derive_builder;
-use rust_htslib::bam::{header::{Header, HeaderRecord}, record::Record, cigar::{Cigar, CigarString}, HeaderView};
-use std::convert::{TryFrom, TryInto};
-use rand::{prelude::*};
+use rand::prelude::*;
+use rust_htslib::bam::record::Aux;
+use rust_htslib::bam::{
+    header::{Header, HeaderRecord},
+    record::{CigarString, Record},
+    HeaderView,
+};
 use std::collections::HashMap;
+use std::convert::TryFrom;
 use std::rc::Rc;
+
+// TODO: add single fragment
+// TODO: write to temp file or to given path
+// TODO: add better docs so this is very usable from rust docs
 
 const DEFAULT_SEED: usize = 42;
 const DEFAULT_BASE_QUALITY: u8 = 30;
 const DEFAULT_READ_LENGTH: usize = 150;
 const DEFAULT_BASES: [char; 4] = ['A', 'C', 'T', 'G'];
 
-
 /// Wrapper type for a ReadGroupID
+#[derive(Debug)]
 pub struct ReadGroupId(String);
 
 impl Default for ReadGroupId {
@@ -22,6 +31,7 @@ impl Default for ReadGroupId {
 }
 
 /// Wrapper type for a Sample Name
+#[derive(Debug)]
 pub struct SampleName(String);
 
 impl Default for SampleName {
@@ -31,20 +41,20 @@ impl Default for SampleName {
 }
 
 /// Hold relevant info about the sequences, translates into a header
+#[derive(Debug)]
 pub struct SequenceMetadataStore {
-    sequences: Vec<SequenceMetadata>
+    sequences: Vec<SequenceMetadata>,
 }
 
 /// Holds relevant information about reference sequences
-// TODO: expand to full sequence dictionary like object
+// Note: At a future point spin this out into its own lib and support Sequence Dict
+#[derive(Debug)]
 pub struct SequenceMetadata {
     name: String,
     length: usize,
 }
 
-
 impl From<SequenceMetadata> for HeaderRecord<'_> {
-
     fn from(meta: SequenceMetadata) -> Self {
         let mut rec = HeaderRecord::new("SQ".as_bytes());
         rec.push_tag("SN".as_bytes(), &meta.name);
@@ -55,15 +65,15 @@ impl From<SequenceMetadata> for HeaderRecord<'_> {
 
 impl Default for SequenceMetadataStore {
     fn default() -> Self {
-        let sequences = (1..22).map(|chr| chr.to_string()).chain(vec!["X", "Y", "M"].into_iter().map(|chr| chr.to_string())).map(|chr| {
-            SequenceMetadata {
+        let sequences = (1..22)
+            .map(|chr| chr.to_string())
+            .chain(vec!["X", "Y", "M"].into_iter().map(|chr| chr.to_string()))
+            .map(|chr| SequenceMetadata {
                 name: format!("chr{}", chr),
-                length: 2_000_000
-            }
-        }).collect();
-        SequenceMetadataStore {
-            sequences
-        }
+                length: 2_000_000,
+            })
+            .collect();
+        SequenceMetadataStore { sequences }
     }
 }
 
@@ -77,8 +87,8 @@ impl From<SequenceMetadataStore> for Header {
     }
 }
 
-
 /// Sort order options for reads
+#[derive(Debug)]
 pub enum ReadSortOrder {
     NameSorted,
     CoordSorted,
@@ -91,38 +101,39 @@ impl Default for ReadSortOrder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Strand {
     Plus,
-    Minus
+    Minus,
 }
 
 /// Builder for SAM records
 // See: https://github.com/fulcrumgenomics/fgbio/blob/57988d615fa6188e0028faedfdf65ed13cf645e7/src/main/scala/com/fulcrumgenomics/testing/SamBuilder.scala
-pub struct SamBuilder {
+#[derive(Debug)]
+pub struct BamBuilder {
     /// Length of reads to generate
-    read_length: usize,
+    pub read_length: usize,
     /// Default base quality to use across all qualities
-    base_quality: u8,
+    pub base_quality: u8,
     /// Name of the sample
-    sample_name: SampleName,
+    pub sample_name: SampleName,
     /// The read group to include in tags
-    read_group_id: ReadGroupId,
+    pub read_group_id: ReadGroupId,
     /// The sort order of the generated reads
-    sort: ReadSortOrder,
+    pub sort: ReadSortOrder,
     /// The BAM header
-    header: Header,
+    pub header: Header,
     /// Random number generator
-    rng: StdRng,
+    pub rng: StdRng,
     /// The collection of records being accumulated
-    records: Vec<Record>,
+    pub records: Vec<Record>,
     /// The default string o qualities to use
-    default_quals: String,
+    pub default_quals: String,
     /// Counter for helping to increment the name
-    counter: usize
+    pub counter: usize,
 }
 
-impl SamBuilder {
+impl BamBuilder {
     pub fn new(
         read_length: usize,
         base_quality: u8,
@@ -131,23 +142,25 @@ impl SamBuilder {
         sort: ReadSortOrder,
         pseudo_sd: Option<SequenceMetadataStore>,
         seed: Option<usize>,
-    ) -> SamBuilder {
-
+    ) -> BamBuilder {
         let pseudo_sd = pseudo_sd.unwrap_or(SequenceMetadataStore::default());
         let seed = seed.unwrap_or(DEFAULT_SEED);
         let rng = StdRng::seed_from_u64(seed as u64);
         let read_group_id = match read_group_id {
             Some(rgi) => ReadGroupId(rgi),
-            None => ReadGroupId::default()
+            None => ReadGroupId::default(),
         };
-        let default_quals = std::iter::repeat(char::from(33 + base_quality)).take(read_length).collect::<String>();
+        let default_quals = std::iter::repeat(char::from(33 + base_quality))
+            .take(read_length)
+            .collect::<String>();
 
-        let header: Header  = pseudo_sd.into();
+        let mut header: Header = pseudo_sd.into();
 
-        // TODO: Add read group to header
+        let mut header_record = HeaderRecord::new("RG".as_bytes());
+        header_record.push_tag("ID".as_bytes(), &read_group_id.0);
+        header.push_record(&header_record);
 
-
-        SamBuilder {
+        BamBuilder {
             read_length,
             base_quality,
             sample_name: SampleName(sample_name),
@@ -170,7 +183,9 @@ impl SamBuilder {
 
     /// Generate a random sequence of bases of length readLength
     fn random_bases(&mut self) -> String {
-        (0..self.read_length).map(|_| DEFAULT_BASES[self.rng.gen_range(0, DEFAULT_BASES.len())]).collect::<String>()
+        (0..self.read_length)
+            .map(|_| DEFAULT_BASES[self.rng.gen_range(0, DEFAULT_BASES.len())])
+            .collect::<String>()
     }
 
     /// Create a ReadPairSpecBuilder with defaults filled in based on the SamBuilder
@@ -192,6 +207,7 @@ impl SamBuilder {
             .mapq2(60)
             .strand1(Strand::Plus)
             .strand2(Strand::Minus)
+            .attrs(HashMap::new())
             .to_owned()
     }
 
@@ -201,39 +217,73 @@ impl SamBuilder {
     ///
     /// EX: TODO: relearn example syntax
     /// let sam_builder = SamBuilder::default();
-    /// let pair_buider = sam_builder.pair_builder();
+    /// let pair_builder = sam_builder.pair_builder();
     /// let pair = pair_builder.cigar1(String::from("1D50M50I50M")).build();
     /// sam_builder.add_pair(pair);
     ///
     pub fn add_pair(&mut self, pair_spec: ReadPairSpec) {
         // TODO: convert cigars into htslib cigars
-        assert!(bases1 == "" || quals1 == "" || bases1.len() == quals1.len(), "bases1 and quals1 were different lengths.");
-        assert!(bases2 == "" || quals2 == "" || bases2.len() == quals2.len(), "bases2 and quals2 were different lengths.");
+        assert!(
+            pair_spec.bases1 == ""
+                || pair_spec.quals1 == ""
+                || pair_spec.bases1.len() == pair_spec.quals1.len(),
+            "bases1 and quals1 were different lengths."
+        );
+        assert!(
+            pair_spec.bases2 == ""
+                || pair_spec.quals2 == ""
+                || pair_spec.bases2.len() == pair_spec.quals2.len(),
+            "bases2 and quals2 were different lengths."
+        );
 
-        let cigar1 = CigarString::try_from(pair_spec.cigar1.into_bytes().as_ref()).expect("Malformed cigar1");
-        let cigar2 = CigarString::try_from(pair_spec.cigar2.into_bytes().as_ref()).expect("Malformed cigar2");
-        assert!(unmapped1 || bases1 == "" || bases1.len() == cigar1.clone().into_view(0).end_pos() as usize, "bases1 doesn't agree with cigar on length");
-        assert!(unmapped1 || bases2 == "" || bases2.len() == cigar2.clone().into_view(0).end_pos() as usize, "bases2 doesn't agree with cigar on length");
-        assert!(unmapped1 || quals1 == "" || quals1.len() == cigar1.clone().into_view(0).end_pos() as usize, "quals1 doesn't agree with cigar on length");
-        assert!(unmapped2 || quals2 == "" || quals2.len() == cigar2.clone().into_view(0).end_pos() as usize, "quals2 doesn't agree with cigar on length");
-
+        let cigar1 = CigarString::try_from(pair_spec.cigar1.as_str()).expect("Malformed cigar1");
+        let cigar2 = CigarString::try_from(pair_spec.cigar2.as_str()).expect("Malformed cigar2");
+        assert!(
+            pair_spec.unmapped1
+                || pair_spec.bases1 == ""
+                || pair_spec.bases1.len() == cigar1.clone().into_view(0).end_pos() as usize,
+            "bases1 doesn't agree with cigar on length"
+        );
+        assert!(
+            pair_spec.unmapped1
+                || pair_spec.bases2 == ""
+                || pair_spec.bases2.len() == cigar2.clone().into_view(0).end_pos() as usize,
+            "bases2 doesn't agree with cigar on length"
+        );
+        assert!(
+            pair_spec.unmapped1
+                || pair_spec.quals1 == ""
+                || pair_spec.quals1.len() == cigar1.clone().into_view(0).end_pos() as usize,
+            "quals1 doesn't agree with cigar on length"
+        );
+        assert!(
+            pair_spec.unmapped2
+                || pair_spec.quals2 == ""
+                || pair_spec.quals2.len() == cigar2.clone().into_view(0).end_pos() as usize,
+            "quals2 doesn't agree with cigar on length"
+        );
 
         let mut r1 = Record::new();
+        let cigar = CigarString::try_from(pair_spec.cigar1.as_str()).unwrap();
         r1.set(
             pair_spec.name.into_bytes().as_ref(),
-            if !pair_spec.unmapped1 { Some(cigar1) } else { None },
+            if !pair_spec.unmapped1 {
+                Some(&cigar)
+            } else {
+                None
+            },
             pair_spec.bases1.into_bytes().as_ref(),
             pair_spec.quals1.into_bytes().as_ref(),
         );
         r1.set_header(Rc::new(HeaderView::from_header(&self.header)));
         r1.set_tid(pair_spec.contig);
         r1.set_pos(pair_spec.start1);
-        if !pair_spec.unmapped1 { r1.set_mapq(pair_spec.mapq1) }
-        // TODO: strand
+        if !pair_spec.unmapped1 {
+            r1.set_mapq(pair_spec.mapq1)
+        }
         match pair_spec.strand1 {
             Strand::Plus => (),
-            Strand::Minus => r1.set_revere()
-
+            Strand::Minus => r1.set_reverse(),
         }
         r1.set_paired();
         r1.set_first_in_template();
@@ -241,35 +291,187 @@ impl SamBuilder {
             r1.set_unmapped();
         }
 
-        // TODO: set attrs
-        // TODO: set readgroup
-        // TODO: set mate stuff
-        // Add a set mate info method to rust htslib
-        // if pair_spec.unmapped2 {
-        //     r1.set_mate_unmapped();
-        // }
+        let mut r2 = Record::new();
+        let cigar = CigarString::try_from(pair_spec.cigar2.as_str()).unwrap();
+        r2.set(
+            r1.qname(),
+            if !pair_spec.unmapped2 {
+                Some(&cigar)
+            } else {
+                None
+            },
+            pair_spec.bases2.into_bytes().as_ref(),
+            pair_spec.quals2.into_bytes().as_ref(),
+        );
+        r2.set_header(Rc::new(HeaderView::from_header(&self.header)));
+        r2.set_tid(pair_spec.contig);
+        r2.set_pos(pair_spec.start2);
+        if !pair_spec.unmapped2 {
+            r2.set_mapq(pair_spec.mapq2)
+        }
+        match pair_spec.strand2 {
+            Strand::Plus => (),
+            Strand::Minus => r2.set_reverse(),
+        }
+        r2.set_paired();
+        r2.set_first_in_template();
+        if pair_spec.unmapped2 {
+            r2.set_unmapped();
+        }
+        r1.push_aux(
+            "RG".as_bytes(),
+            &Aux::String(&self.read_group_id.0.as_bytes()),
+        );
+        r2.push_aux(
+            "RG".as_bytes(),
+            &Aux::String(&self.read_group_id.0.as_bytes()),
+        );
+        BamBuilder::set_mate_info(&mut r1, &mut r2, true);
+    }
 
+    /// Write the mate info for two BAM Records
+    fn set_mate_info(rec1: &mut Record, rec2: &mut Record, set_mate_cigar: bool) {
+        // See SamPairUtil in htsjdk for original impl
+        // If neither read is unmapped just set their mate info
+        if !rec1.is_unmapped() && !rec2.is_unmapped() {
+            rec1.set_mtid(rec2.tid());
+            rec1.set_mpos(rec2.pos());
+            if rec2.is_reverse() {
+                rec1.set_mate_reverse()
+            }
+            rec1.push_aux(b"MQ", &Aux::Char(rec2.mapq()));
 
+            rec2.set_mtid(rec1.tid());
+            rec2.set_mpos(rec1.pos());
+            if rec1.is_reverse() {
+                rec2.set_mate_reverse()
+            }
+            rec2.push_aux(b"MQ", &Aux::Char(rec1.mapq()));
+
+            if set_mate_cigar {
+                rec1.push_aux(b"MC", &Aux::String(rec2.cigar().to_string().as_bytes()));
+                rec2.push_aux(b"MC", &Aux::String(rec1.cigar().to_string().as_bytes()));
+            } // leave empty otherwise
+        } else if rec1.is_unmapped() && rec2.is_unmapped() {
+            // both unmapped
+            rec1.set_tid(-1);
+            rec1.set_pos(-1); // TODO: check this
+            rec1.set_mtid(-1);
+            rec1.set_mpos(-1);
+            rec1.set_mate_unmapped();
+            rec1.set_insert_size(0);
+            if rec2.is_reverse() {
+                rec1.set_mate_reverse()
+            }
+
+            rec2.set_tid(-1);
+            rec2.set_pos(-1); // TODO: check this
+            rec2.set_mtid(-1);
+            rec2.set_mpos(-1);
+            rec2.set_mate_unmapped();
+            rec2.set_insert_size(0);
+            if rec1.is_reverse() {
+                rec2.set_mate_reverse()
+            }
+        } else if rec1.is_unmapped() {
+            // only rec2 is mapped
+            rec1.set_tid(-1);
+            rec1.set_pos(-1); // TODO: check this
+
+            rec2.set_mtid(rec1.tid());
+            rec2.set_mpos(rec1.pos());
+            rec2.set_mate_unmapped();
+            rec2.set_insert_size(0);
+            if rec1.is_reverse() {
+                rec2.set_mate_reverse()
+            }
+
+            rec1.set_mtid(rec2.tid());
+            rec1.set_mpos(rec2.pos());
+            rec1.set_insert_size(0);
+            rec1.push_aux(b"MQ", &Aux::Char(rec2.mapq()));
+            if set_mate_cigar {
+                rec1.push_aux(b"MC", &Aux::String(rec2.cigar().to_string().as_bytes()))
+            }
+            if rec2.is_reverse() {
+                rec1.set_mate_reverse()
+            }
+        } else {
+            // only rec1 is mapped
+            rec2.set_tid(-1);
+            rec2.set_pos(-1); // TODO: check this
+
+            rec1.set_mtid(rec2.tid());
+            rec1.set_mpos(rec2.pos());
+            rec1.set_mate_unmapped();
+            rec1.set_insert_size(0);
+            if rec2.is_reverse() {
+                rec1.set_mate_reverse()
+            }
+
+            rec2.set_mtid(rec1.tid());
+            rec2.set_mpos(rec1.pos());
+            rec2.set_insert_size(0);
+            rec2.push_aux(b"MQ", &Aux::Char(rec1.mapq()));
+            if set_mate_cigar {
+                rec2.push_aux(b"MC", &Aux::String(rec1.cigar().to_string().as_bytes()))
+            }
+            if rec1.is_reverse() {
+                rec2.set_mate_reverse()
+            }
+        }
+
+        let insert_size = BamBuilder::compute_insert_size(rec1, rec2);
+        rec1.set_insert_size(insert_size);
+        rec2.set_insert_size(insert_size);
+    }
+
+    fn compute_insert_size(rec1: &Record, rec2: &Record) -> i64 {
+        if rec1.is_unmapped() || rec2.is_unmapped() {
+            return 0;
+        }
+        if rec1.tid() != rec2.tid() {
+            return 0;
+        }
+
+        let rec1_5prime_pos = if rec1.is_reverse() {
+            rec1.cigar().end_pos()
+        } else {
+            rec1.pos()
+        };
+        let rec2_5prime_pos = if rec2.is_reverse() {
+            rec2.cigar().end_pos()
+        } else {
+            rec2.pos()
+        };
+
+        let adjustment = if rec2_5prime_pos >= rec1_5prime_pos {
+            1
+        } else {
+            -1
+        };
+        // TODO: Confirm this is valid for BAMS
+        rec2_5prime_pos - rec1_5prime_pos + adjustment
     }
 }
 
-impl Default for SamBuilder {
-    fn default() -> Self {
-        SamBuilder::new(
-            DEFAULT_READ_LENGTH,
-            DEFAULT_BASE_QUALITY,
-            SampleName::default().0,
-            Some(ReadGroupId::default().0),
-            ReadSortOrder::Unsorted,
-            SequenceMetadataStore::default().into(),
-            Some(DEFAULT_SEED)
-        )
-    }
-}
+// impl Default for BamBuilder {
+//     fn default() -> Self {
+//         BamBuilder::new(
+//             DEFAULT_READ_LENGTH,
+//             DEFAULT_BASE_QUALITY,
+//             SampleName::default().0,
+//             Some(ReadGroupId::default().0),
+//             ReadSortOrder::Unsorted,
+//             SequenceMetadataStore::default().into(),
+//             Some(DEFAULT_SEED),
+//         )
+//     }
+// }
 
-
-/// A specification for a read pair. See ReadPairSpecBuilder or pair_builder
-#[derive(Builder)]
+/// A specification for a read pair. See ReadPairSpecBuilder or pair_builder.
+/// Mate tags and info will be set by default
+#[derive(Builder, Debug)]
 pub struct ReadPairSpec {
     name: String,
     bases1: String,
@@ -287,10 +489,8 @@ pub struct ReadPairSpec {
     mapq2: u8,
     strand1: Strand,
     strand2: Strand,
-    attrs: HashMap<String, String>
+    attrs: HashMap<String, String>,
 }
-
-
 
 #[cfg(test)]
 mod tests {
