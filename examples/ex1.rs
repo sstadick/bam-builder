@@ -1,4 +1,4 @@
-use bam_builder::{BamBuilder, ReadSortOrder};
+use bam_builder::{bam_order::BamSortOrder, BamBuilder};
 
 fn main() {
     println!("Welcome to example1");
@@ -8,7 +8,7 @@ fn main() {
         30,
         "Pair".to_owned(),
         None,
-        ReadSortOrder::Unsorted,
+        BamSortOrder::Unsorted,
         None,
         None,
     );
@@ -16,10 +16,11 @@ fn main() {
     // Create a builder for read pair spec
     let records = builder
         .pair_builder()
-        .start1(1)
-        .start2(1)
-        .unmapped1(true)
-        .unmapped2(true)
+        .contig(0)
+        .start1(0)
+        .start2(200)
+        .unmapped1(false)
+        .unmapped2(false)
         .bases1("A".repeat(100))
         .bases2("C".repeat(100))
         .build()
@@ -28,5 +29,6 @@ fn main() {
 
     // Add the pair to bam builder
     builder.add_pair(records);
-    println!("{:?}", builder)
+    println!("{:?}", builder);
+    builder.to_path(std::path::Path::new(&String::from("./test.bam")));
 }
