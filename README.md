@@ -1,3 +1,7 @@
+![Rust](https://github.com/sstadick/bam-builder/workflows/Rust/badge.svg)
+[![API docs](https://img.shields.io/badge/API-documentation-blue.svg)](https://docs.rs/bam-builder)
+[![Crates.io](https://img.shields.io/crates/v/bam-builder.svg)](https://crates.io/crates/bam-builder)
+
 # bam-builder
 
 A library for easily building bams for testing.
