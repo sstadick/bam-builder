@@ -33,7 +33,7 @@ fn main() {
         .unmapped2(false)        // override default of unmapped
         .bases1("A".repeat(100)) // override default random bases with "A"s
         .bases2("C".repeat(100)) // override default random bases with "C"s
-        .build() // inflate the underlying records and set mate info
+        .build()                 // inflate the underlying records and set mate info
         .unwrap();
 
     // Add the pair to bam builder
