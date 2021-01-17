@@ -14,35 +14,32 @@ use bam_builder::{bam_order::BamSortOrder, BamBuilder};
 fn main() {
     // Create a builder with all defaults except the read_len is 100
     let mut builder = BamBuilder::new(
-        100,
-        30,
-        "Pair".to_owned(),
-        None,
-        BamSortOrder::Unsorted,
-        None,
-        None,
+        100,                    // default read length
+        30,                     // default base quality
+        "Pair".to_owned(),      // name of sample
+        None,                   // optional read group id
+        BamSortOrder::Unsorted, // how to sort reads when `.sort` is called
+        None,                   // optional sequence dictionary
+        None,                   // optional seed used for generating random bases
     );
 
     // Create a builder for read pair spec
     let records = builder
         .pair_builder()
-        .contig(0)
-        .start1(0)
-        .start2(200)
-        .unmapped1(false)
-        .unmapped2(false)
-        .bases1("A".repeat(100))
-        .bases2("C".repeat(100))
-        .build()
+        .contig(0)               // reads are mapped to tid 0
+        .start1(0)               // start pos of read1
+        .start2(200)             // start pos of read2
+        .unmapped1(false)        // override default of unmapped
+        .unmapped2(false)        // override default of unmapped
+        .bases1("A".repeat(100)) // override default random bases with "A"s
+        .bases2("C".repeat(100)) // override default random bases with "C"s
+        .build() // inflate the underlying records and set mate info
         .unwrap();
-    println!("{:?}", records);
 
     // Add the pair to bam builder
     builder.add_pair(records);
-    println!("{:?}", builder);
+
     // Write records to a file
-    builder
-        .to_path(std::path::Path::new(&String::from("./test.bam")))
-        .unwrap();
+    let tmp_file = builder.to_tmp().unwrap();
 }
 ```
