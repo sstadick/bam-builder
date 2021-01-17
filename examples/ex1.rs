@@ -1,7 +1,6 @@
 use bam_builder::{bam_order::BamSortOrder, BamBuilder};
 
 fn main() {
-    println!("Welcome to example1");
     // Create a builder with all defaults except the read_len is 100
     let mut builder = BamBuilder::new(
         100,
@@ -30,5 +29,8 @@ fn main() {
     // Add the pair to bam builder
     builder.add_pair(records);
     println!("{:?}", builder);
-    builder.to_path(std::path::Path::new(&String::from("./test.bam")));
+    // Write records to a file
+    builder
+        .to_path(std::path::Path::new(&String::from("./test.bam")))
+        .unwrap();
 }

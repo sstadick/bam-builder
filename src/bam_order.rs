@@ -1,4 +1,5 @@
-// #![warn(missing_docs)]
+//! Specification for how to sort BAM records based on [`BamSortOrder`].
+#![warn(missing_docs)]
 use super::DEFAULT_SEED;
 use rand::prelude::*;
 use rust_htslib::bam::record::Record;
@@ -6,13 +7,18 @@ use std::cmp::Ordering;
 /// Sort order options for reads
 #[derive(Debug)]
 pub enum BamSortOrder {
+    /// Sort by `qname`.
     NameSorted,
+    /// Sort by `tid` and `pos`.
     CoordSorted,
+    /// Leave records in current order.
     Unsorted,
+    /// Randomly shuffle records.
     Random,
 }
 
 impl BamSortOrder {
+    /// Sort `records` based on the [`BamSortOrder`] variant.
     pub fn sort(&self, records: &mut [Record]) {
         match self {
             BamSortOrder::NameSorted => records.sort_by(|a, b| {
@@ -45,6 +51,7 @@ impl BamSortOrder {
 }
 
 impl Default for BamSortOrder {
+    /// Default for [`BamSortOrder`] is [`BamSortOrder::Unsorted`].
     fn default() -> Self {
         Self::Unsorted
     }

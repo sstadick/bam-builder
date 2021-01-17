@@ -1,10 +1,53 @@
-// #![warn(missing_docs)]
+//! Simple wrapper over [`rust_htslib::bam`] for building collections of BAM records for testing.
+//!
+//! Provides an easy to use builder pattern for creating both paired end and single reads.
+//! Additionally this library provides nice wrappers and extensions on [rust_htslib] and
+//! intends to grow them over time.
+//!
+//! - [`bam_order`] allows for specifying different sort orders for your BAM collection.
+//! - [`sequence_dict`] is a SequenceDictionary like object used for generating [`rust_htslib::bam::Header`]s.
+//! - [`wrappers`] provides some convenience types for awkward types like [`rust_htslib::bam::record::Aux`].
+//!
+//! # Example
+//!
+//! ```
+//! use bam_builder::{bam_order::BamSortOrder, BamBuilder};
+//!
+//! let mut builder = BamBuilder::new(
+//!     100,                    // default read_length
+//!     30,                     // default base_quality
+//!     "Pair".to_owned(),      // name of samples
+//!     None,                   // optional read group id
+//!     BamSortOrder::Unsorted, // how to sort reads when `.sort` is called
+//!     None,                   // optional sequence_dict
+//!     None,                   // seed used for generating random bases
+//! );
+//!
+//! // Create a builder for read pair spec
+//!  let records = builder
+//!      .pair_builder()
+//!      .contig(0)
+//!      .start1(0)
+//!      .start2(200)
+//!      .unmapped1(false)
+//!      .unmapped2(false)
+//!      .bases1("A".repeat(100))
+//!      .bases2("C".repeat(100))
+//!      .build()
+//!      .unwrap();
+//!
+//! // Inflate the underlying BAM bam records and add to builder
+//! builder.add_pair(records);
+//!
+//! // Write to temp file
+//! let tmp = builder.to_tmp().unwrap();
+//! ```
+#![warn(missing_docs)]
 pub mod bam_order;
 pub mod sequence_dict;
 pub mod wrappers;
-#[macro_use]
-extern crate derive_builder;
 use bam_order::BamSortOrder;
+use derive_builder::*;
 use rand::prelude::*;
 use rust_htslib::bam::{
     header::{Header, HeaderRecord},
@@ -22,14 +65,20 @@ use std::{convert::TryFrom, path::Path};
 use tempfile::NamedTempFile;
 use wrappers::{AuxType, ReadGroupId, SampleName, Strand};
 
-// TODO: add better docs so this is very usable from rust docs
-
+/// Default seed used in random base selection.
 const DEFAULT_SEED: usize = 42;
-const DEFAULT_BASE_QUALITY: u8 = 30;
-const DEFAULT_READ_LENGTH: usize = 150;
+/// Default bases to select from in random base selection.
 const DEFAULT_BASES: [char; 4] = ['A', 'C', 'T', 'G'];
 
-/// Builder for SAM records
+/// Builder for BAM records.
+///
+/// Sets up defaults for reads that are added as well as the BAM header information. Use [`BamBuilder::new`] to generate
+/// a [`BamBuilder`] with appropriately populated fields.
+///
+/// The pattern of interaction with [`BamBuilder`] is to use the [`BamBuilder::frag_builder`] and [`BamBuilder::pair_builder`]
+/// methods to create a respective [`ReadFragSpecBuilder`] and [`ReadPairSpecBuilder`]. The `*SpecBuilder`
+/// is creates a record with its `.build()` method, and the result can be added to the builder with [`BamBuilder::add_pair`]
+/// or [`BamBuilder::add_frag`].
 // See: https://github.com/fulcrumgenomics/fgbio/blob/57988d615fa6188e0028faedfdf65ed13cf645e7/src/main/scala/com/fulcrumgenomics/testing/SamBuilder.scala
 #[derive(Debug)]
 pub struct BamBuilder {
@@ -56,6 +105,25 @@ pub struct BamBuilder {
 }
 
 impl BamBuilder {
+    /// Create a [`BamBuilder`] that fills in defaults based on the passed in options.
+    ///
+    /// # Example
+    /// ```
+    /// use bam_builder::{bam_order::BamSortOrder, BamBuilder};
+    ///
+    /// let mut builder = BamBuilder::new(
+    ///     100,                    // default read_length
+    ///     30,                     // default base_quality
+    ///     "Pair".to_owned(),      // name of samples
+    ///     None,                   // optional read group id
+    ///     BamSortOrder::Unsorted, // how to sort reads when `.sort` is called
+    ///     None,                   // optional sequence_dict
+    ///     None,                   // seed used for generating random bases
+    /// );
+    /// assert_eq!(builder.read_group_id.0, String::from("A"));
+    /// assert_eq!(builder.sample_name.0, String::from("Pair"));
+    /// assert_eq!(builder.records.len(), 0);
+    /// ```
     pub fn new(
         read_length: usize,
         base_quality: u8,
@@ -96,21 +164,21 @@ impl BamBuilder {
         }
     }
 
-    /// Generate a sequential name, 16 chars wide padded with 0's
+    /// Generate a sequential name, 16 chars wide padded with 0's.
     fn next_name(&mut self) -> String {
         let name = format!("{:0>16}", self.counter);
         self.counter += 1;
         name
     }
 
-    /// Generate a random sequence of bases of length readLength
+    /// Generate a random sequence of bases of length readLength.
     fn random_bases(&mut self) -> String {
         (0..self.read_length)
             .map(|_| DEFAULT_BASES[self.rng.gen_range(0, DEFAULT_BASES.len())])
             .collect::<String>()
     }
 
-    /// Create a ReadFragSpecBuilder with defaults filled in based on BamBuilder
+    /// Create a ReadFragSpecBuilder with defaults filled in based on BamBuilder.
     pub fn frag_builder(&mut self) -> ReadFragSpecBuilder {
         ReadFragSpecBuilder::default()
             .name(self.next_name())
@@ -126,7 +194,7 @@ impl BamBuilder {
             .to_owned()
     }
 
-    /// Add a single fragment to the builder
+    /// Add a single fragment to the builder.
     pub fn add_frag(&mut self, frag_spec: ReadFragSpec) {
         assert!(
             frag_spec.bases == ""
@@ -184,7 +252,7 @@ impl BamBuilder {
         self.records.push(r);
     }
 
-    /// Create a ReadPairSpecBuilder with defaults filled in based on the BamBuilder
+    /// Create a ReadPairSpecBuilder with defaults filled in based on the BamBuilder.
     pub fn pair_builder(&mut self) -> ReadPairSpecBuilder {
         ReadPairSpecBuilder::default()
             .name(self.next_name())
@@ -207,16 +275,7 @@ impl BamBuilder {
             .to_owned()
     }
 
-    // Look into using https://stackoverflow.com/questions/19650265/is-there-a-faster-shorter-way-to-initialize-variables-in-a-rust-struct or
-    // https://docs.rs/derive_builder/0.5.1/derive_builder/ to collect all the fields to build a bam, and may for the builder itself
-    /// Add a read pair.
-    ///
-    /// EX: TODO: relearn example syntax
-    /// let sam_builder = SamBuilder::default();
-    /// let pair_builder = sam_builder.pair_builder();
-    /// let pair = pair_builder.cigar1(String::from("1D50M50I50M")).build();
-    /// sam_builder.add_pair(pair);
-    ///
+    /// Add a read pair to the builder.
     pub fn add_pair(&mut self, pair_spec: ReadPairSpec) {
         assert!(
             pair_spec.bases1 == ""
@@ -331,7 +390,7 @@ impl BamBuilder {
         self.records.push(r2);
     }
 
-    /// Write the mate info for two BAM Records
+    /// Write the mate info for two BAM Records.
     fn set_mate_info(rec1: &mut Record, rec2: &mut Record, set_mate_cigar: bool) {
         // See SamPairUtil in htsjdk for original impl
         // If neither read is unmapped just set their mate info
@@ -428,6 +487,7 @@ impl BamBuilder {
         rec2.set_insert_size(insert_size);
     }
 
+    /// Computes the TLEN field for two records.
     fn compute_insert_size(rec1: &Record, rec2: &Record) -> i64 {
         if rec1.is_unmapped() || rec2.is_unmapped() {
             return 0;
@@ -450,8 +510,10 @@ impl BamBuilder {
         rec2_5prime_pos - rec1_5prime_pos //+ adjustment
     }
 
-    /// Writes records to specified path.
-    /// Be sure to sort
+    /// Writes BAM records to specified path.
+    ///
+    /// Note that [`BamBuilder::sort`] should be called ahead of writing to ensure records
+    /// are sorted.
     pub fn to_path(&self, path: &Path) -> Result<(), Error> {
         let mut writer = bam::Writer::from_path(path, &self.header, bam::Format::BAM)?;
         for record in self.records.iter() {
@@ -461,68 +523,84 @@ impl BamBuilder {
         Ok(())
     }
 
-    /// Write records to a tempfile. Tempfile will be deleted when `NamedTempFile` goes out of scope
-    /// be sure to sort first
+    /// Write records to a tempfile. Tempfile will be deleted when `NamedTempFile` goes out of scope.
+    ///
+    /// Note that [`BamBuilder::sort`] should be called ahead of writing to ensure records
+    /// are sorted.
     pub fn to_tmp(&self) -> Result<NamedTempFile, Error> {
         let tempfile = NamedTempFile::new().unwrap();
         self.to_path(tempfile.path())?;
         Ok(tempfile)
     }
 
-    /// Sort the records added thus far by whichever [`BamSortOrder`] was specified
+    /// Sort the records added thus far by whichever [`BamSortOrder`] was specified.
     pub fn sort(&mut self) {
         self.sort_order.sort(&mut self.records);
     }
 }
 
-// impl Default for BamBuilder {
-//     fn default() -> Self {
-//         BamBuilder::new(
-//             DEFAULT_READ_LENGTH,
-//             DEFAULT_BASE_QUALITY,
-//             SampleName::default().0,
-//             Some(ReadGroupId::default().0),
-//             ReadSortOrder::Unsorted,
-//             SequenceMetadataStore::default().into(),
-//             Some(DEFAULT_SEED),
-//         )
-//     }
-// }
-
-/// A specification for a read pair. See ReadPairSpecBuilder or pair_builder.
+/// A specification for a read pair. See [`ReadPairSpecBuilder`] or [`BamBuilder::pair_builder`].
 /// Mate tags and info will be set by default
 #[derive(Builder, Debug)]
 pub struct ReadPairSpec {
+    /// Name of the reads, will be filled in by [`BamBuilder::next_name`] by default.
     name: String,
+    /// Sequence bases, will be filled in by [`BamBuilder::random_bases`] by default.
     bases1: String,
+    /// Sequence bases, will be filled in by [`BamBuilder::random_bases`] by default.
     bases2: String,
+    /// Quality string, will be based on the [`BamBuilder::base_quality`] by default.
     quals1: String,
+    /// Quality string, will be based on the [`BamBuilder::base_quality`] by default.
     quals2: String,
+    /// Reference contig if mapped, defaults to unmapped.
     contig: i32,
+    /// 0-based location on reference contig if mapped. defaults to unmapped.
     start1: i64,
+    /// 0-based location on reference contig if mapped. defaults to unmapped.
     start2: i64,
+    /// `true` if unmapped, defaults to `true`.
     unmapped1: bool,
+    /// `true` if unmapped, defaults to `true`.
     unmapped2: bool,
+    /// Alignment, defaults to all `M` if mapped or `*` if unmapped.
     cigar1: String,
+    /// Alignment, defaults to all `M` if mapped or `*` if unmapped.
     cigar2: String,
+    /// map quality of the read, defaults to 60 if mapped, `*` if unmapped.
     mapq1: u8,
+    /// map quality of the read, defaults to 60 if mapped, `*` if unmapped.
     mapq2: u8,
+    /// Strand the read maps to, defaults to [`wrappers::Strand::Plus`].
     strand1: Strand,
+    /// Strand the read maps to, defaults to [`wrappers::Strand::Minus`].
     strand2: Strand,
+    /// Tags for the reads, mate tags will be filled in by default.
     attrs: HashMap<String, AuxType>,
 }
 
+/// A specification for a single read. See [`ReadFragSpecBuilder`] or [`BamBuilder::frag_builder`].
 #[derive(Builder, Debug)]
 pub struct ReadFragSpec {
+    /// Name of the read, will be filled in by [`BamBuilder::next_name`] by default.
     name: String,
+    /// Sequence bases, will be filled in by [`BamBuilder::random_bases`] by default.
     bases: String,
+    /// Quality string, will be based on the [`BamBuilder::base_quality`] by default.
     quals: String,
+    /// Reference contig if mapped, defaults to unmapped.
     contig: i32,
+    /// 0-based location on reference contig if mapped. defaults to unmapped.
     start: i64,
+    /// `true` if unmapped, defaults to `true`.
     unmapped: bool,
+    /// Alignment, defaults to all `M` if mapped or `*` if unmapped.
     cigar: String,
+    /// map quality of the read, defaults to 60 if mapped, `*` if unmapped.
     mapq: u8,
+    /// Strand the read maps to, defaults to [`wrappers::Strand::Plus`].
     strand: Strand,
+    /// Tags for the read, defaults to none.
     attrs: HashMap<String, AuxType>,
 }
 
