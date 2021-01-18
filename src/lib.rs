@@ -704,6 +704,8 @@ mod tests {
         assert_eq!(builder.records[1].mtid(), builder.records[0].tid());
         assert_eq!(builder.records[1].mpos(), builder.records[0].pos());
         assert_eq!(builder.records[0].mpos(), builder.records[1].pos());
+        assert_eq!(builder.records[1].tid(), -1);
+        assert_eq!(builder.records[1].pos(), -1);
         // Check mate strandedness set
         assert!(builder.records[0].is_mate_reverse());
         assert!(!builder.records[1].is_mate_reverse());
