@@ -659,6 +659,9 @@ mod tests {
         // Check for read group set
         assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
         assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
+        // Check TLEN
+        assert_eq!(builder.records[0].insert_size(), 290);
+        assert_eq!(builder.records[1].insert_size(), 290);
     }
 
     #[test]
@@ -712,7 +715,9 @@ mod tests {
         // Check for read group set
         assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
         assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
-        // TODO: check tlen size
+        // Check TLEN is not set
+        assert_eq!(builder.records[0].insert_size(), 0);
+        assert_eq!(builder.records[1].insert_size(), 0);
     }
 
     // TODO: check frags fields only
