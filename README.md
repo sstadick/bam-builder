@@ -43,3 +43,7 @@ fn main() {
     let tmp_file = builder.to_tmp().unwrap();
 }
 ```
+
+## Attributions
+
+This library is more a less a direct clone of [fgbio's SamBuilder](https://github.com/fulcrumgenomics/fgbio/blob/master/src/main/scala/com/fulcrumgenomics/testing/SamBuilder.scala), mixed in with some helper methods from [htsjdk](https://github.com/samtools/htsjdk).

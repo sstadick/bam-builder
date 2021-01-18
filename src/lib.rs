@@ -368,7 +368,7 @@ impl BamBuilder {
             Strand::Minus => r2.set_reverse(),
         }
         r2.set_paired();
-        r2.set_first_in_template();
+        r2.set_last_in_template();
         if pair_spec.unmapped2 {
             r2.set_unmapped();
         }
@@ -606,8 +606,116 @@ pub struct ReadFragSpec {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+    use rust_htslib::bam::record::Aux;
+
     #[test]
-    fn it_works() {
-        assert_eq!(2 + 2, 4);
+    fn check_proper_pairs() {
+        let mut builder = BamBuilder::new(
+            100,
+            30,
+            String::from("Test"),
+            None,
+            BamSortOrder::NameSorted,
+            None,
+            None,
+        );
+
+        for i in 0..10 {
+            let pair = builder
+                .pair_builder()
+                .contig(i)
+                .start1(10)
+                .start2(200)
+                .unmapped1(false)
+                .unmapped2(false)
+                .build()
+                .unwrap();
+            builder.add_pair(pair);
+        }
+
+        assert_eq!(builder.records.len(), 20);
+        // Test names
+        assert_eq!(builder.records[0].qname(), "0000000000000000".as_bytes());
+        assert_eq!(builder.records[1].qname(), "0000000000000000".as_bytes());
+        assert_eq!(builder.records[18].qname(), "0000000000000009".as_bytes());
+        assert_eq!(builder.records[19].qname(), "0000000000000009".as_bytes());
+        // Test pairedness / mate info
+        assert!(builder.records[0].is_paired());
+        assert!(builder.records[1].is_paired());
+        assert!(builder.records[0].is_first_in_template());
+        assert!(builder.records[1].is_last_in_template());
+        // Check mate positions set
+        assert_eq!(builder.records[0].mtid(), builder.records[1].tid());
+        assert_eq!(builder.records[1].mtid(), builder.records[0].tid());
+        assert_eq!(builder.records[1].mpos(), builder.records[0].pos());
+        assert_eq!(builder.records[0].mpos(), builder.records[1].pos());
+        // Check mate strandedness set
+        assert!(builder.records[0].is_mate_reverse());
+        assert!(!builder.records[1].is_mate_reverse());
+        // Test mate tags set
+        assert_eq!(builder.records[0].aux(b"MQ").unwrap(), Aux::Char(60));
+        assert_eq!(builder.records[0].aux(b"MC").unwrap(), Aux::String(b"100M"));
+        // Check for read group set
+        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
+        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
     }
+
+    #[test]
+    fn check_improper_pair() {
+        let mut builder = BamBuilder::new(
+            100,
+            30,
+            String::from("Test"),
+            None,
+            BamSortOrder::NameSorted,
+            None,
+            None,
+        );
+
+        for i in 0..10 {
+            // Read2's are unmapped
+            let pair = builder
+                .pair_builder()
+                .contig(i)
+                .start1(10)
+                .unmapped1(false)
+                .build()
+                .unwrap();
+            builder.add_pair(pair);
+        }
+
+        assert_eq!(builder.records.len(), 20);
+        // Test names
+        assert_eq!(builder.records[0].qname(), "0000000000000000".as_bytes());
+        assert_eq!(builder.records[1].qname(), "0000000000000000".as_bytes());
+        assert_eq!(builder.records[18].qname(), "0000000000000009".as_bytes());
+        assert_eq!(builder.records[19].qname(), "0000000000000009".as_bytes());
+        // Test pairedness / mate info
+        assert!(builder.records[0].is_paired());
+        assert!(builder.records[1].is_paired());
+        assert!(builder.records[0].is_first_in_template());
+        assert!(builder.records[1].is_last_in_template());
+        // Check mate positions set
+        assert_eq!(builder.records[0].mtid(), builder.records[1].tid());
+        assert_eq!(builder.records[1].mtid(), builder.records[0].tid());
+        assert_eq!(builder.records[1].mpos(), builder.records[0].pos());
+        assert_eq!(builder.records[0].mpos(), builder.records[1].pos());
+        // Check mate strandedness set
+        assert!(builder.records[0].is_mate_reverse());
+        assert!(!builder.records[1].is_mate_reverse());
+        // Test mate tags set
+        assert_eq!(builder.records[0].aux(b"MQ"), None);
+        assert_eq!(builder.records[1].aux(b"MQ").unwrap(), Aux::Char(60));
+        assert_eq!(builder.records[0].aux(b"MC"), None);
+        assert_eq!(builder.records[1].aux(b"MC").unwrap(), Aux::String(b"100M"));
+        // Check for read group set
+        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
+        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
+        // TODO: check tlen size
+    }
+
+    // TODO: check frags fields only
+
+    // TODO: check sort methods
 }
