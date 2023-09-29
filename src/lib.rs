@@ -174,7 +174,7 @@ impl BamBuilder {
     /// Generate a random sequence of bases of length readLength.
     fn random_bases(&mut self) -> String {
         (0..self.read_length)
-            .map(|_| DEFAULT_BASES[self.rng.gen_range(0, DEFAULT_BASES.len())])
+            .map(|_| DEFAULT_BASES[self.rng.gen_range(0..DEFAULT_BASES.len())])
             .collect::<String>()
     }
 
@@ -242,12 +242,9 @@ impl BamBuilder {
         if frag_spec.unmapped {
             r.set_unmapped();
         }
-        r.push_aux(
-            "RG".as_bytes(),
-            &Aux::String(&self.read_group_id.0.as_bytes()),
-        );
+        r.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
         for (key, value) in frag_spec.attrs.iter() {
-            r.push_aux(key.as_bytes(), &value.into());
+            r.push_aux(key.as_bytes(), value.into());
         }
         self.records.push(r);
     }
@@ -372,18 +369,12 @@ impl BamBuilder {
         if pair_spec.unmapped2 {
             r2.set_unmapped();
         }
-        r1.push_aux(
-            "RG".as_bytes(),
-            &Aux::String(&self.read_group_id.0.as_bytes()),
-        );
-        r2.push_aux(
-            "RG".as_bytes(),
-            &Aux::String(&self.read_group_id.0.as_bytes()),
-        );
+        r1.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
+        r2.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
 
         for (key, value) in pair_spec.attrs.iter() {
-            r1.push_aux(key.as_bytes(), &value.into());
-            r2.push_aux(key.as_bytes(), &value.into());
+            r1.push_aux(key.as_bytes(), value.into());
+            r2.push_aux(key.as_bytes(), value.into());
         }
         BamBuilder::set_mate_info(&mut r1, &mut r2, true);
         self.records.push(r1);
@@ -400,18 +391,18 @@ impl BamBuilder {
             if rec2.is_reverse() {
                 rec1.set_mate_reverse()
             }
-            rec1.push_aux(b"MQ", &Aux::Char(rec2.mapq()));
+            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq()));
 
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             if rec1.is_reverse() {
                 rec2.set_mate_reverse()
             }
-            rec2.push_aux(b"MQ", &Aux::Char(rec1.mapq()));
+            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq()));
 
             if set_mate_cigar {
-                rec1.push_aux(b"MC", &Aux::String(rec2.cigar().to_string().as_bytes()));
-                rec2.push_aux(b"MC", &Aux::String(rec1.cigar().to_string().as_bytes()));
+                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()));
+                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()));
             } // leave empty otherwise
         } else if rec1.is_unmapped() && rec2.is_unmapped() {
             // both unmapped
@@ -450,9 +441,9 @@ impl BamBuilder {
             rec1.set_mtid(rec2.tid());
             rec1.set_mpos(rec2.pos());
             rec1.set_insert_size(0);
-            rec1.push_aux(b"MQ", &Aux::Char(rec2.mapq()));
+            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq()));
             if set_mate_cigar {
-                rec1.push_aux(b"MC", &Aux::String(rec2.cigar().to_string().as_bytes()))
+                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()));
             }
             if rec2.is_reverse() {
                 rec1.set_mate_reverse()
@@ -473,9 +464,9 @@ impl BamBuilder {
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             rec2.set_insert_size(0);
-            rec2.push_aux(b"MQ", &Aux::Char(rec1.mapq()));
+            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq()));
             if set_mate_cigar {
-                rec2.push_aux(b"MC", &Aux::String(rec1.cigar().to_string().as_bytes()))
+                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()));
             }
             if rec1.is_reverse() {
                 rec2.set_mate_reverse()
@@ -515,7 +506,7 @@ impl BamBuilder {
     /// Note that [`BamBuilder::sort`] should be called ahead of writing to ensure records
     /// are sorted.
     pub fn to_path(&self, path: &Path) -> Result<(), Error> {
-        let mut writer = bam::Writer::from_path(path, &self.header, bam::Format::BAM)?;
+        let mut writer = bam::Writer::from_path(path, &self.header, bam::Format::Bam)?;
         for record in self.records.iter() {
             writer.write(record)?;
         }
@@ -655,10 +646,10 @@ mod tests {
         assert!(!builder.records[1].is_mate_reverse());
         // Test mate tags set
         assert_eq!(builder.records[0].aux(b"MQ").unwrap(), Aux::Char(60));
-        assert_eq!(builder.records[0].aux(b"MC").unwrap(), Aux::String(b"100M"));
+        assert_eq!(builder.records[0].aux(b"MC").unwrap(), Aux::String("100M"));
         // Check for read group set
-        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
-        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
+        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String("A"));
+        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String("A"));
         // Check TLEN
         assert_eq!(builder.records[0].insert_size(), 290);
         assert_eq!(builder.records[1].insert_size(), 290);
@@ -710,13 +701,13 @@ mod tests {
         assert!(builder.records[0].is_mate_reverse());
         assert!(!builder.records[1].is_mate_reverse());
         // Test mate tags set
-        assert_eq!(builder.records[0].aux(b"MQ"), None);
+        assert_eq!(builder.records[0].aux(b"MQ").ok(), None);
         assert_eq!(builder.records[1].aux(b"MQ").unwrap(), Aux::Char(60));
-        assert_eq!(builder.records[0].aux(b"MC"), None);
-        assert_eq!(builder.records[1].aux(b"MC").unwrap(), Aux::String(b"100M"));
+        assert_eq!(builder.records[0].aux(b"MC").ok(), None);
+        assert_eq!(builder.records[1].aux(b"MC").unwrap(), Aux::String("100M"));
         // Check for read group set
-        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String(b"A"));
-        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String(b"A"));
+        assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String("A"));
+        assert_eq!(builder.records[1].aux(b"RG").unwrap(), Aux::String("A"));
         // Check TLEN is not set
         assert_eq!(builder.records[0].insert_size(), 0);
         assert_eq!(builder.records[1].insert_size(), 0);
