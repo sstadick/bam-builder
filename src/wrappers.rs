@@ -28,11 +28,11 @@ impl Default for SampleName {
 #[derive(Clone, Debug)]
 pub enum AuxType {
     /// Corresponds to [Aux::Integer].
-    Integer(i64),
+    Integer(i32),
     /// Corresponds to [Aux::String], but as an owned String.
     String(String),
     /// Corresponds to [Aux::Float].
-    Float(f64),
+    Float(f32),
     /// Corresponds to [Aux::Char].
     Char(u8),
 }
@@ -41,8 +41,8 @@ impl<'a> From<&'a AuxType> for Aux<'a> {
     /// Convert a ref [`AuxType`] to ref [`Aux`].
     fn from(aux_type: &'a AuxType) -> Self {
         match aux_type {
-            AuxType::Integer(x) => Aux::Integer(*x),
-            AuxType::String(x) => Aux::String((*x).as_bytes()),
+            AuxType::Integer(x) => Aux::I32(*x),
+            AuxType::String(x) => Aux::String(x.as_str()),
             AuxType::Float(x) => Aux::Float(*x),
             AuxType::Char(x) => Aux::Char(*x),
         }
