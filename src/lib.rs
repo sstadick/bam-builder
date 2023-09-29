@@ -197,8 +197,8 @@ impl BamBuilder {
     /// Add a single fragment to the builder.
     pub fn add_frag(&mut self, frag_spec: ReadFragSpec) {
         assert!(
-            frag_spec.bases == ""
-                || frag_spec.quals == ""
+            frag_spec.bases.is_empty()
+                || frag_spec.quals.is_empty()
                 || frag_spec.bases.len() == frag_spec.quals.len(),
             "bases and quals were different lengths."
         );
@@ -206,13 +206,13 @@ impl BamBuilder {
         let cigar = CigarString::try_from(frag_spec.cigar.as_str()).expect("Malformed cigar");
         assert!(
             frag_spec.unmapped
-                || frag_spec.bases == ""
+                || frag_spec.bases.is_empty()
                 || frag_spec.bases.len() == cigar.clone().into_view(0).end_pos() as usize,
             "bases doesn't agree with cigar on length"
         );
         assert!(
             frag_spec.unmapped
-                || frag_spec.quals == ""
+                || frag_spec.quals.is_empty()
                 || frag_spec.quals.len() == cigar.clone().into_view(0).end_pos() as usize,
             "quals doesn't agree with cigar on length"
         );
@@ -242,9 +242,10 @@ impl BamBuilder {
         if frag_spec.unmapped {
             r.set_unmapped();
         }
-        r.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
+        r.push_aux("RG".as_bytes(), Aux::String(self.read_group_id.0.as_str()))
+            .unwrap();
         for (key, value) in frag_spec.attrs.iter() {
-            r.push_aux(key.as_bytes(), value.into());
+            r.push_aux(key.as_bytes(), value.into()).unwrap();
         }
         self.records.push(r);
     }
@@ -275,14 +276,14 @@ impl BamBuilder {
     /// Add a read pair to the builder.
     pub fn add_pair(&mut self, pair_spec: ReadPairSpec) {
         assert!(
-            pair_spec.bases1 == ""
-                || pair_spec.quals1 == ""
+            pair_spec.bases1.is_empty()
+                || pair_spec.quals1.is_empty()
                 || pair_spec.bases1.len() == pair_spec.quals1.len(),
             "bases1 and quals1 were different lengths."
         );
         assert!(
-            pair_spec.bases2 == ""
-                || pair_spec.quals2 == ""
+            pair_spec.bases2.is_empty()
+                || pair_spec.quals2.is_empty()
                 || pair_spec.bases2.len() == pair_spec.quals2.len(),
             "bases2 and quals2 were different lengths."
         );
@@ -291,25 +292,25 @@ impl BamBuilder {
         let cigar2 = CigarString::try_from(pair_spec.cigar2.as_str()).expect("Malformed cigar2");
         assert!(
             pair_spec.unmapped1
-                || pair_spec.bases1 == ""
+                || pair_spec.bases1.is_empty()
                 || pair_spec.bases1.len() == cigar1.clone().into_view(0).end_pos() as usize,
             "bases1 doesn't agree with cigar on length"
         );
         assert!(
             pair_spec.unmapped1
-                || pair_spec.bases2 == ""
+                || pair_spec.bases2.is_empty()
                 || pair_spec.bases2.len() == cigar2.clone().into_view(0).end_pos() as usize,
             "bases2 doesn't agree with cigar on length"
         );
         assert!(
             pair_spec.unmapped1
-                || pair_spec.quals1 == ""
+                || pair_spec.quals1.is_empty()
                 || pair_spec.quals1.len() == cigar1.clone().into_view(0).end_pos() as usize,
             "quals1 doesn't agree with cigar on length"
         );
         assert!(
             pair_spec.unmapped2
-                || pair_spec.quals2 == ""
+                || pair_spec.quals2.is_empty()
                 || pair_spec.quals2.len() == cigar2.clone().into_view(0).end_pos() as usize,
             "quals2 doesn't agree with cigar on length"
         );
@@ -369,12 +370,14 @@ impl BamBuilder {
         if pair_spec.unmapped2 {
             r2.set_unmapped();
         }
-        r1.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
-        r2.push_aux("RG".as_bytes(), Aux::String(&self.read_group_id.0.as_str()));
+        r1.push_aux("RG".as_bytes(), Aux::String(self.read_group_id.0.as_str()))
+            .unwrap();
+        r2.push_aux("RG".as_bytes(), Aux::String(self.read_group_id.0.as_str()))
+            .unwrap();
 
         for (key, value) in pair_spec.attrs.iter() {
-            r1.push_aux(key.as_bytes(), value.into());
-            r2.push_aux(key.as_bytes(), value.into());
+            r1.push_aux(key.as_bytes(), value.into()).unwrap();
+            r2.push_aux(key.as_bytes(), value.into()).unwrap();
         }
         BamBuilder::set_mate_info(&mut r1, &mut r2, true);
         self.records.push(r1);
@@ -391,18 +394,20 @@ impl BamBuilder {
             if rec2.is_reverse() {
                 rec1.set_mate_reverse()
             }
-            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq()));
+            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq())).unwrap();
 
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             if rec1.is_reverse() {
                 rec2.set_mate_reverse()
             }
-            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq()));
+            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq())).unwrap();
 
             if set_mate_cigar {
-                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()));
-                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()));
+                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()))
+                    .unwrap();
+                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()))
+                    .unwrap();
             } // leave empty otherwise
         } else if rec1.is_unmapped() && rec2.is_unmapped() {
             // both unmapped
@@ -441,9 +446,10 @@ impl BamBuilder {
             rec1.set_mtid(rec2.tid());
             rec1.set_mpos(rec2.pos());
             rec1.set_insert_size(0);
-            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq()));
+            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq())).unwrap();
             if set_mate_cigar {
-                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()));
+                rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()))
+                    .unwrap();
             }
             if rec2.is_reverse() {
                 rec1.set_mate_reverse()
@@ -464,9 +470,10 @@ impl BamBuilder {
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             rec2.set_insert_size(0);
-            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq()));
+            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq())).unwrap();
             if set_mate_cigar {
-                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()));
+                rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()))
+                    .unwrap();
             }
             if rec1.is_reverse() {
                 rec2.set_mate_reverse()

@@ -41,7 +41,7 @@ impl From<SequenceData> for HeaderRecord<'_> {
     fn from(meta: SequenceData) -> Self {
         let mut rec = HeaderRecord::new("SQ".as_bytes());
         rec.push_tag("SN".as_bytes(), &meta.name);
-        rec.push_tag("LN".as_bytes(), &meta.length);
+        rec.push_tag("LN".as_bytes(), meta.length);
         rec
     }
 }
