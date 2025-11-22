@@ -174,7 +174,7 @@ impl BamBuilder {
     /// Generate a random sequence of bases of length readLength.
     fn random_bases(&mut self) -> String {
         (0..self.read_length)
-            .map(|_| DEFAULT_BASES[self.rng.gen_range(0..DEFAULT_BASES.len())])
+            .map(|_| DEFAULT_BASES[self.rng.random_range(0..DEFAULT_BASES.len())])
             .collect::<String>()
     }
 
