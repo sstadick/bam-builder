@@ -398,14 +398,14 @@ impl BamBuilder {
             if rec2.is_reverse() {
                 rec1.set_mate_reverse()
             }
-            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq())).unwrap();
+            rec1.push_aux(b"MQ", Aux::U8(rec2.mapq())).unwrap();
 
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             if rec1.is_reverse() {
                 rec2.set_mate_reverse()
             }
-            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq())).unwrap();
+            rec2.push_aux(b"MQ", Aux::U8(rec1.mapq())).unwrap();
 
             if set_mate_cigar {
                 rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()))
@@ -450,7 +450,7 @@ impl BamBuilder {
             rec1.set_mtid(rec2.tid());
             rec1.set_mpos(rec2.pos());
             rec1.set_insert_size(0);
-            rec1.push_aux(b"MQ", Aux::Char(rec2.mapq())).unwrap();
+            rec1.push_aux(b"MQ", Aux::U8(rec2.mapq())).unwrap();
             if set_mate_cigar {
                 rec1.push_aux(b"MC", Aux::String(rec2.cigar().to_string().as_str()))
                     .unwrap();
@@ -474,7 +474,7 @@ impl BamBuilder {
             rec2.set_mtid(rec1.tid());
             rec2.set_mpos(rec1.pos());
             rec2.set_insert_size(0);
-            rec2.push_aux(b"MQ", Aux::Char(rec1.mapq())).unwrap();
+            rec2.push_aux(b"MQ", Aux::U8(rec1.mapq())).unwrap();
             if set_mate_cigar {
                 rec2.push_aux(b"MC", Aux::String(rec1.cigar().to_string().as_str()))
                     .unwrap();
@@ -656,7 +656,7 @@ mod tests {
         assert!(builder.records[0].is_mate_reverse());
         assert!(!builder.records[1].is_mate_reverse());
         // Test mate tags set
-        assert_eq!(builder.records[0].aux(b"MQ").unwrap(), Aux::Char(60));
+        assert_eq!(builder.records[0].aux(b"MQ").unwrap(), Aux::U8(60));
         assert_eq!(builder.records[0].aux(b"MC").unwrap(), Aux::String("100M"));
         // Check for read group set
         assert_eq!(builder.records[0].aux(b"RG").unwrap(), Aux::String("A"));
@@ -713,7 +713,7 @@ mod tests {
         assert!(!builder.records[1].is_mate_reverse());
         // Test mate tags set
         assert_eq!(builder.records[0].aux(b"MQ").ok(), None);
-        assert_eq!(builder.records[1].aux(b"MQ").unwrap(), Aux::Char(60));
+        assert_eq!(builder.records[1].aux(b"MQ").unwrap(), Aux::U8(60));
         assert_eq!(builder.records[0].aux(b"MC").ok(), None);
         assert_eq!(builder.records[1].aux(b"MC").unwrap(), Aux::String("100M"));
         // Check for read group set
