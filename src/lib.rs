@@ -341,6 +341,8 @@ impl BamBuilder {
         r1.set_first_in_template();
         if pair_spec.unmapped1 {
             r1.set_unmapped();
+        } else {
+            r1.unset_unmapped();
         }
 
         let mut r2 = Record::new();
@@ -369,6 +371,8 @@ impl BamBuilder {
         r2.set_last_in_template();
         if pair_spec.unmapped2 {
             r2.set_unmapped();
+        } else {
+            r2.unset_unmapped();
         }
         r1.push_aux("RG".as_bytes(), Aux::String(self.read_group_id.0.as_str()))
             .unwrap();
